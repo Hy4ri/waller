@@ -35,8 +35,6 @@
             zlib
             gsettings-desktop-schemas
             hicolor-icon-theme
-            gsettings-desktop-schemas
-            hicolor-icon-theme
           ];
 
           tags = [ "gtk_3_24" ];
@@ -88,7 +86,7 @@
             export XDG_DATA_DIRS=${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS
           '';
         };
-        };
+
 
         apps.default = {
           type = "app";
