@@ -93,5 +93,9 @@
           program = "${self.packages.${system}.default}/bin/waller";
         };
       }
-    );
+    ) // {
+      overlays.default = final: prev: {
+        waller = self.packages.${prev.system}.default;
+      };
+    };
 }
