@@ -1,0 +1,37 @@
+name: Clean Caches
+
+on:
+  schedule:
+    # Run weekly on Sundays at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:  # Allow manual cleanup
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    
+    steps:
+      - name: Cleanup old caches
+        run: |
+          echo "Cleaning up caches older than 7 days..."
+          gh extension install actions/gh-actions-cache
+          
+          REPO=${{ github.repository }}
+          
+          # Delete caches older than 7 days
+          gh actions-cache list -R $REPO --limit 100 | while read -r line; do
+            CACHE_ID=$(echo "$line" | awk '{print $1}')
+            CACHE_DATE=$(echo "$line" | awk '{print $4}')
+            
+            # Calculate age in days (simplified check)
+            AGE_DAYS=$(( ( $(date +%s) - $(date -d "$CACHE_DATE" +%s) ) / 86400 ))
+            
+            if [ $AGE_DAYS -gt 7 ]; then
+              echo "Deleting cache $CACHE_ID (age: $AGE_DAYS days)"
+              gh actions-cache delete $CACHE_ID -R $REPO --confirm
+            fi
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

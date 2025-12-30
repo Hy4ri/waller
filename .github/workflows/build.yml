@@ -1,0 +1,118 @@
+name: Build Waller
+
+on:
+  push:
+    branches: [ main, master, dev ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # Allow manual triggers
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Install Nix with optimal settings for CI
+      - name: Install Nix
+        uses: cachix/install-nix-action@v26
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+            # Use max cores for faster builds
+            max-jobs = auto
+            cores = 0
+
+      # Optional: Use Cachix for Nix binary cache (requires setup)
+      # Uncomment and add CACHIX_AUTH_TOKEN to your repo secrets
+      # - name: Setup Cachix
+      #   uses: cachix/cachix-action@v14
+      #   with:
+      #     name: waller
+      #     authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
+      # Cache Go modules separately for faster builds
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      # Cache Nix store paths
+      - name: Cache Nix store
+        uses: actions/cache@v4
+        with:
+          path: |
+            /nix/store
+            /nix/var/nix/profiles
+            /nix/var/nix/db
+          key: ${{ runner.os }}-nix-${{ hashFiles('flake.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-nix-
+
+      # Build the application
+      - name: Build Waller
+        run: |
+          nix build .#default -L
+          
+      # Check build output
+      - name: Verify build
+        run: |
+          ls -lh result/bin/
+          file result/bin/waller
+          ./result/bin/waller --help || echo "Note: GUI apps may not show help in headless CI"
+
+      # Upload the binary as an artifact
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: waller-${{ github.sha }}
+          path: result/bin/waller
+          retention-days: 30
+
+      # Optional: Upload with commit info for easy identification
+      - name: Create build info
+        run: |
+          echo "Build Date: $(date)" > build-info.txt
+          echo "Commit: ${{ github.sha }}" >> build-info.txt
+          echo "Branch: ${{ github.ref_name }}" >> build-info.txt
+          ./result/bin/waller --version >> build-info.txt 2>&1 || echo "Version: 0.1.0" >> build-info.txt
+
+      - name: Upload build info
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-info-${{ github.sha }}
+          path: build-info.txt
+          retention-days: 30
+
+  # Run basic checks in parallel
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v26
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Run Go formatting check
+        run: |
+          nix develop -c gofmt -l . | tee /tmp/gofmt-output
+          if [ -s /tmp/gofmt-output ]; then
+            echo "The following files need formatting:"
+            cat /tmp/gofmt-output
+            exit 1
+          fi
+
+      - name: Run Go vet
+        run: nix develop -c go vet ./...
