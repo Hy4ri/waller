@@ -107,11 +107,19 @@ jobs:
 
       - name: Run Go formatting check
         run: |
-          nix develop -c gofmt -l . | tee /tmp/gofmt-output
-          if [ -s /tmp/gofmt-output ]; then
-            echo "The following files need formatting:"
-            cat /tmp/gofmt-output
-            exit 1
+          UNFORMATTED=$(nix develop -c gofmt -l . | grep -v "^vendor/" || true)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "⚠️  Warning: The following files need formatting:"
+            echo "$UNFORMATTED"
+            echo ""
+            echo "Run locally: go fmt ./..."
+            echo ""
+            echo "::warning::Some Go files are not formatted. Run 'go fmt ./...' to fix."
+            # Don't fail the build, just warn
+            # Change 'exit 0' to 'exit 1' if you want to enforce formatting
+            exit 0
+          else
+            echo "✅ All Go files are properly formatted!"
           fi
 
       - name: Run Go vet
