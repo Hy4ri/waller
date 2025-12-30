@@ -1,3 +1,5 @@
+// Package layer provides the Wayland wallpaper daemon using gtk-layer-shell.
+// It creates fullscreen windows on the background layer with CSS-scaled wallpapers.
 package layer
 
 /*
@@ -29,29 +31,9 @@ GtkWidget* create_wallpaper_window(char* image_path, int monitor_index) {
         gtk_layer_set_monitor(GTK_WINDOW(window), monitor);
     }
 
-    // Load Image
-    GtkWidget *image = gtk_image_new_from_file(image_path);
-
-    // We need to scale the image to fill. GTK3 GtkImage doesn't scale easily without custom draw.
-    // Let's use CSS or Pixbuf scaling.
-    // Pixbuf approach:
-    GError *err = NULL;
-    GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file(image_path, &err);
-    if (err != NULL) {
-        printf("Error loading image: %s\n", err->message);
-        return window; // Start empty?
-    }
-
-    // Get screen size?
-    // Ideally we scale on resize event.
-    // For simplicity in this iteration: load as-is or use CSS cover.
-
     // CSS is cleaner for filling background.
     GtkStyleContext *context = gtk_widget_get_style_context(window);
     gtk_style_context_add_class(context, "wallpaper");
-
-    // We'll return window and handle CSS in Go string
-    // gtk_container_add(GTK_CONTAINER(window), image); // Placeholder, this won't scale
 
     return window;
 }
@@ -78,7 +60,7 @@ func RunDaemon(imagePath string, monitorIndex int) {
 	cPath := C.CString(imagePath)
 	defer C.free(unsafe.Pointer(cPath))
 
-	// In a real app we'd iterate monitors and spawn a window for each.
+	// Create wallpaper window for the specified monitor
 	win := C.create_wallpaper_window(cPath, C.int(monitorIndex))
 
 	// CSS for background scaling

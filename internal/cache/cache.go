@@ -1,3 +1,5 @@
+// Package cache provides thumbnail generation and caching for wallpaper images.
+// Thumbnails are stored in the user's cache directory and indexed by MD5 hash.
 package cache
 
 import (

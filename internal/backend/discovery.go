@@ -1,3 +1,5 @@
+// Package backend handles wallpaper file discovery and scanning.
+// It finds all supported image files in a given directory.
 package backend
 
 import (

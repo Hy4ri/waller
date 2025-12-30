@@ -1,3 +1,5 @@
+// Package gui implements the GTK3-based wallpaper manager interface.
+// It provides a visual grid of wallpapers with monitor selection and random rotation.
 package gui
 
 import (
@@ -5,7 +7,6 @@ import (
 	"log"
 	"math/rand/v2"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/gotk3/gotk3/gdk"
@@ -15,6 +16,7 @@ import (
 	"waller/internal/backend" // We can reuse the scanner logic
 	"waller/internal/cache"
 	"waller/internal/config"
+	"waller/internal/manager"
 )
 
 func Run() error {
@@ -67,7 +69,7 @@ func Run() error {
 	display, _ := gdk.DisplayGetDefault()
 	nMonitors := display.GetNMonitors()
 
-	monitorCombo.AppendText("All") // Index 0 in combo, but -1 for logic?
+	monitorCombo.AppendText("All") // Maps to -1 for "All Monitors" logic
 	for i := 0; i < nMonitors; i++ {
 		// Try to get model/name if possible, else "Monitor N"
 		mon, _ := display.GetMonitor(i)
@@ -115,7 +117,7 @@ func Run() error {
 	scroll.Add(flowBox)
 
 	// We need global access to flowbox for loading
-	// Closure hack?
+	// Store reference for async background loading
 	globalFlowBox = flowBox
 
 	win.ShowAll()
@@ -132,8 +134,6 @@ var (
 	globalFlowBox        *gtk.FlowBox
 	globalFiles          []string
 	selectedMonitorIndex int
-	// Map monitor index -> PID of running daemon
-	monitorDaemons = make(map[int]int)
 )
 
 func loadWallpapers(dir string) {
@@ -183,7 +183,7 @@ func addWallpaperItem(path string) {
 	// Use cache!
 	thumbPath, err := cache.GetThumbnail(path, true)
 	if err != nil {
-		thumbPath = path // Fallback, trigger gen later?
+		thumbPath = path // Fallback to full image
 		// Trigger gen
 		go cache.GetThumbnail(path, false)
 	}
@@ -213,60 +213,5 @@ func addWallpaperItem(path string) {
 }
 
 func applyWallpaper(path string) {
-	if selectedMonitorIndex == -1 {
-		// Apply to ALL monitors: Kill all known daemons and respawn
-		for idx, pid := range monitorDaemons {
-			killDaemon(pid)
-			delete(monitorDaemons, idx)
-		}
-
-		// Fallback cleanup just in case
-		exec.Command("pkill", "-f", "waller --daemon").Run()
-
-		display, _ := gdk.DisplayGetDefault()
-		nMonitors := display.GetNMonitors()
-
-		for i := 0; i < nMonitors; i++ {
-			pid := spawnDaemon(path, i)
-			if pid > 0 {
-				monitorDaemons[i] = pid
-			}
-		}
-	} else {
-		// Specific monitor: Only kill the daemon for THIS monitor
-		if pid, exists := monitorDaemons[selectedMonitorIndex]; exists {
-			killDaemon(pid)
-			delete(monitorDaemons, selectedMonitorIndex)
-		}
-
-		pid := spawnDaemon(path, selectedMonitorIndex)
-		if pid > 0 {
-			monitorDaemons[selectedMonitorIndex] = pid
-		}
-	}
-}
-
-func killDaemon(pid int) {
-	p, err := os.FindProcess(pid)
-	if err == nil {
-		p.Kill()
-	}
-}
-
-func spawnDaemon(path string, monitorIdx int) int {
-	self, _ := os.Executable()
-	cmd := exec.Command(self, "--daemon", path, "--monitor-index", fmt.Sprintf("%d", monitorIdx))
-	err := cmd.Start()
-	if err != nil {
-		log.Println("Failed to start daemon:", err)
-		return 0
-	}
-
-	// We do NOT release, so we can track it?
-	// Actually, Releasing removes resources but PID remains until wait?
-	// On Linux, if we don't Wait, it becomes a zombie until init reaps it.
-	// But we want it to run indefinitely.
-	// For this simple manager, just tracking PID is fine.
-	cmd.Process.Release()
-	return cmd.Process.Pid
+	manager.ApplyWallpaper(path, selectedMonitorIndex)
 }

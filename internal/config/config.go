@@ -1,3 +1,5 @@
+// Package config manages application configuration including wallpaper directory settings.
+// Configuration is stored as JSON in the user's config directory.
 package config
 
 import (
@@ -6,31 +8,10 @@ import (
 	"path/filepath"
 )
 
-type BackendType string
-
-const (
-	BackendSwww      BackendType = "swww"
-	BackendHyprpaper BackendType = "hyprpaper"
-	BackendSwaybg    BackendType = "swaybg"
-	BackendGsettings BackendType = "gsettings"
-	BackendCustom    BackendType = "custom"
-)
-
 // Config holds the application settings that are saved to disk.
-// The fields are tagged with `json:"..."` to define how they look in the config file.
 type Config struct {
 	// WallpaperDir is the path where the user stores their wallpapers.
 	WallpaperDir string `json:"wallpaper_dir"`
-
-	// PreferredBackend is the tool we use to set the wallpaper (e.g., swww, swaybg).
-	PreferredBackend BackendType `json:"preferred_backend"`
-
-	// CustomCommand allows the user to define their own command if they choose BackendCustom.
-	// The placeholder %f will be replaced by the wallpaper path.
-	CustomCommand string `json:"custom_command"`
-
-	// Scaling determines how the image fits the screen (fill, fit, stretch).
-	Scaling string `json:"scaling"`
 }
 
 func GetConfigPath() (string, error) {
@@ -49,13 +30,10 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
-	// Check if the file exists. If not, we return a default configuration
-	// so the app can start fresh without crashing.
+	// Check if the file exists. If not, return a default configuration.
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return &Config{
-			WallpaperDir:     "",          // User will set this later
-			PreferredBackend: BackendSwww, // Default to swww as it's the most feature-rich
-			Scaling:          "fill",
+			WallpaperDir: "", // User will set this in the GUI
 		}, nil
 	}
 
