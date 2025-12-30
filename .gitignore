@@ -1,0 +1,23 @@
+# Binaries
+waller
+*.exe
+*.test
+*.prof
+
+# Directories
+dist/
+bin/
+vendor/
+
+# Nix
+result
+.direnv/
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+result
+waller
