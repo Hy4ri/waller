@@ -17,7 +17,7 @@
           version = "0.1.0";
           src = ./.;
 
-          vendorHash = "sha256-Z3pfeQvPXAC3oD+Oxjdi/bcrL0eElNBoJminIQfL7qo=";
+          vendorHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
           nativeBuildInputs = with pkgs; [
             pkg-config
@@ -95,7 +95,7 @@
       }
     ) // {
       overlays.default = final: prev: {
-        waller = self.packages.${prev.system}.default;
+        waller = self.packages.${prev.stdenv.hostPlatform.system}.default;
       };
     };
 }
