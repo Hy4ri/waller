@@ -17,7 +17,7 @@
           version = "0.1.0";
           src = ./.;
 
-          vendorHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+          vendorHash = "sha256-fqD6O9seT7PlBMv++m9l0/RcuwwFEHZ1tiGTsBBTTXk=";
 
           nativeBuildInputs = with pkgs; [
             pkg-config
