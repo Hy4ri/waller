@@ -1,20 +1,23 @@
 // Package manager handles wallpaper application logic including daemon process management.
-// It spawns gtk-layer-shell daemon processes per monitor and tracks their PIDs.
+// It uses IPC via Unix sockets to communicate with running daemons, only spawning new ones when needed.
 package manager
 
 import (
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/gtk"
 )
 
-// We need to keep track of PIDs if we are a long-running process (like GUI or Randomizer)
-// Map monitor index -> PID
-var monitorDaemons = make(map[int]int)
+// getSocketPath returns the Unix socket path for a given monitor index.
+func getSocketPath(monitorIndex int) string {
+	return fmt.Sprintf("/tmp/waller-%d.sock", monitorIndex)
+}
 
 // Init must be called to ensure GTK/GDK is initialized for monitor detection
 func Init() {
@@ -25,67 +28,83 @@ func Init() {
 }
 
 // ApplyWallpaper sets the wallpaper on the specified monitor index (-1 for All).
-// It manages the daemon processes.
+// It uses IPC to communicate with running daemons, only spawning new ones if needed.
 func ApplyWallpaper(path string, monitorIndex int) {
 	if monitorIndex == -1 {
 		// Apply to ALL monitors
-
-		// 1. Cleanup existing tracked daemons
-		for idx, pid := range monitorDaemons {
-			killDaemon(pid)
-			delete(monitorDaemons, idx)
-		}
-		// 2. Fallback cleanup (in case of external kills or restarts)
-		exec.Command("pkill", "-f", "waller --daemon").Run()
-
-		// 3. Detect and Spawn
 		display, _ := gdk.DisplayGetDefault()
 		nMonitors := display.GetNMonitors()
 
 		for i := 0; i < nMonitors; i++ {
-			pid := spawnDaemon(path, i)
-			if pid > 0 {
-				monitorDaemons[i] = pid
-			}
+			applyToMonitor(path, i)
 		}
 	} else {
-		// Specific monitor
-		if pid, exists := monitorDaemons[monitorIndex]; exists {
-			killDaemon(pid)
-			delete(monitorDaemons, monitorIndex)
-		}
-
-		pid := spawnDaemon(path, monitorIndex)
-		if pid > 0 {
-			monitorDaemons[monitorIndex] = pid
-		}
+		applyToMonitor(path, monitorIndex)
 	}
 }
 
-func killDaemon(pid int) {
-	p, err := os.FindProcess(pid)
-	if err == nil {
-		p.Kill()
-		p.Wait() // Avoid zombies
+// applyToMonitor handles wallpaper application for a single monitor.
+// Uses IPC if daemon is running, spawns new daemon otherwise.
+func applyToMonitor(path string, monitorIdx int) {
+	socketPath := getSocketPath(monitorIdx)
+
+	// Check if daemon socket exists (daemon is running)
+	if _, err := os.Stat(socketPath); err == nil {
+		// Daemon is running, send update via IPC
+		if sendIPCUpdate(socketPath, path) {
+			return // Success
+		}
+		// IPC failed, socket might be stale - clean up and spawn new daemon
+		os.Remove(socketPath)
 	}
+
+	// No running daemon, spawn a new one
+	spawnDaemon(path, monitorIdx)
 }
 
-func spawnDaemon(path string, monitorIdx int) int {
+// sendIPCUpdate sends a wallpaper path to the daemon via Unix socket.
+// Returns true on success, false on failure.
+func sendIPCUpdate(socketPath, imagePath string) bool {
+	conn, err := net.DialTimeout("unix", socketPath, 2*time.Second)
+	if err != nil {
+		log.Printf("IPC dial failed: %v", err)
+		return false
+	}
+	defer conn.Close()
+
+	// Set write deadline to avoid hanging
+	conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+
+	// Send path with newline terminator (daemon expects this)
+	_, err = fmt.Fprintf(conn, "%s\n", imagePath)
+	if err != nil {
+		log.Printf("IPC write failed: %v", err)
+		return false
+	}
+
+	return true
+}
+
+// spawnDaemon starts a new daemon process for the specified monitor.
+func spawnDaemon(path string, monitorIdx int) {
 	self, _ := os.Executable()
 	cmd := exec.Command(self, "--daemon", path, "--monitor-index", fmt.Sprintf("%d", monitorIdx))
-	// We want the daemon to persist, so we start it and let it go.
-	// However, we need its PID.
+
 	err := cmd.Start()
 	if err != nil {
 		log.Println("Failed to start daemon:", err)
-		return 0
+		return
 	}
 
-	// Detach? Use Release to let it live if we die?
-	// If we are the Randomizer, we want them to die when WE die?
-	// User expects "waller --random" to effectively "own" the desktop.
-	// If we Release, they become orphans re-parented to init.
-	// That is fine for a permanent wallpaper.
+	// Release the process so it continues independently
 	cmd.Process.Release()
-	return cmd.Process.Pid
+
+	// Wait briefly for daemon to create its socket
+	socketPath := getSocketPath(monitorIdx)
+	for i := 0; i < 10; i++ {
+		time.Sleep(50 * time.Millisecond)
+		if _, err := os.Stat(socketPath); err == nil {
+			return // Socket created, daemon is ready
+		}
+	}
 }

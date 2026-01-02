@@ -14,7 +14,7 @@
       {
         packages.default = pkgs.buildGoModule {
           pname = "waller";
-          version = "0.1.0";
+          version = "0.2.0";
           src = ./.;
 
           vendorHash = "sha256-fqD6O9seT7PlBMv++m9l0/RcuwwFEHZ1tiGTsBBTTXk=";

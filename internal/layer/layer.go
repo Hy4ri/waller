@@ -1,5 +1,6 @@
 // Package layer provides the Wayland wallpaper daemon using gtk-layer-shell.
 // It creates fullscreen windows on the background layer with CSS-scaled wallpapers.
+// Supports IPC via Unix socket to update wallpapers without restarting.
 package layer
 
 /*
@@ -9,7 +10,7 @@ package layer
 #include <gtk-layer-shell/gtk-layer-shell.h>
 
 // Helper to create a layer window
-GtkWidget* create_wallpaper_window(char* image_path, int monitor_index) {
+GtkWidget* create_wallpaper_window(int monitor_index) {
     GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 
     gtk_layer_init_for_window(GTK_WINDOW(window));
@@ -38,32 +39,39 @@ GtkWidget* create_wallpaper_window(char* image_path, int monitor_index) {
     return window;
 }
 
-void apply_css(GtkWidget* window, char* css_data) {
+// apply_css_to_window applies CSS styling with the given image path to the window.
+void apply_css_to_window(GtkWidget* window, const char* css_data) {
     GtkCssProvider *provider = gtk_css_provider_new();
     gtk_css_provider_load_from_data(provider, css_data, -1, NULL);
 
     GtkStyleContext *context = gtk_widget_get_style_context(window);
-    gtk_style_context_add_provider(context, GTK_STYLE_PROVIDER(provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-    gtk_style_context_add_class(context, "wallpaper");
+    // Remove old providers and add new one to avoid stacking
+    gtk_style_context_add_provider(context, GTK_STYLE_PROVIDER(provider), GTK_STYLE_PROVIDER_PRIORITY_USER);
+    g_object_unref(provider);
 }
 */
 import "C"
 import (
+	"bufio"
 	"fmt"
+	"log"
+	"net"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
 	"unsafe"
+
+	"github.com/gotk3/gotk3/glib"
 )
 
-// RunDaemon starts the GTK main loop and displays the wallpaper.
-func RunDaemon(imagePath string, monitorIndex int) {
-	C.gtk_init(nil, nil)
+// getSocketPath returns the Unix socket path for a given monitor index.
+func getSocketPath(monitorIndex int) string {
+	return fmt.Sprintf("/tmp/waller-%d.sock", monitorIndex)
+}
 
-	cPath := C.CString(imagePath)
-	defer C.free(unsafe.Pointer(cPath))
-
-	// Create wallpaper window for the specified monitor
-	win := C.create_wallpaper_window(cPath, C.int(monitorIndex))
-
-	// CSS for background scaling
+// updateWallpaperCSS generates and applies new CSS for the given image path.
+func updateWallpaperCSS(win *C.GtkWidget, imagePath string) {
 	css := fmt.Sprintf(`
         .wallpaper {
             background-image: url("%s");
@@ -75,9 +83,76 @@ func RunDaemon(imagePath string, monitorIndex int) {
 
 	cCss := C.CString(css)
 	defer C.free(unsafe.Pointer(cCss))
+	C.apply_css_to_window(win, cCss)
+}
 
-	C.apply_css(win, cCss)
+// RunDaemon starts the GTK main loop and displays the wallpaper.
+// It also starts a Unix socket IPC listener to accept wallpaper update commands.
+func RunDaemon(imagePath string, monitorIndex int) {
+	C.gtk_init(nil, nil)
+
+	// Create wallpaper window for the specified monitor
+	win := C.create_wallpaper_window(C.int(monitorIndex))
+
+	// Apply initial wallpaper CSS
+	updateWallpaperCSS(win, imagePath)
 
 	C.gtk_widget_show_all(win)
+
+	// Setup IPC socket
+	socketPath := getSocketPath(monitorIndex)
+	os.Remove(socketPath) // Remove stale socket if exists
+
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		log.Printf("Warning: Failed to create IPC socket: %v", err)
+	} else {
+		// Cleanup socket on shutdown
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		go func() {
+			<-sigChan
+			listener.Close()
+			os.Remove(socketPath)
+			os.Exit(0)
+		}()
+
+		// IPC listener goroutine
+		go func() {
+			defer listener.Close()
+			defer os.Remove(socketPath)
+
+			for {
+				conn, err := listener.Accept()
+				if err != nil {
+					// Listener closed, exit goroutine
+					return
+				}
+
+				// Read the new image path from the socket
+				reader := bufio.NewReader(conn)
+				newPath, err := reader.ReadString('\n')
+				conn.Close()
+
+				if err != nil {
+					continue
+				}
+
+				newPath = strings.TrimSpace(newPath)
+				if newPath == "" {
+					continue
+				}
+
+				// Use glib.IdleAdd to safely update UI from this goroutine
+				// Must capture newPath value to avoid race condition
+				pathCopy := newPath
+				glib.IdleAdd(func() bool {
+					updateWallpaperCSS(win, pathCopy)
+					return false // Run once
+				})
+			}
+		}()
+	}
+
 	C.gtk_main()
 }

@@ -73,18 +73,22 @@ func main() {
 			log.Fatal("No wallpaper directory configured. Please run GUI first.")
 		}
 
-		fmt.Printf("Starting auto-rotation: dir=%s interval=%ds\n", cfg.WallpaperDir, *autoInterval)
+		// Cache the wallpaper list once at startup to avoid rescanning on every interval
+		files, err := backend.GetWallpapers(cfg.WallpaperDir)
+		if err != nil {
+			log.Fatal("Error scanning wallpapers:", err)
+		}
+		if len(files) == 0 {
+			log.Fatal("No wallpapers found in directory")
+		}
+
+		fmt.Printf("Starting auto-rotation: dir=%s interval=%ds wallpapers=%d\n", cfg.WallpaperDir, *autoInterval, len(files))
 
 		for {
-			files, err := backend.GetWallpapers(cfg.WallpaperDir)
-			if err != nil {
-				log.Println("Error scanning wallpapers:", err)
-			} else if len(files) > 0 {
-				ri := rand.IntN(len(files))
-				selected := files[ri]
-				// Apply to ALL monitors (-1) by default for now
-				manager.ApplyWallpaper(selected, -1)
-			}
+			ri := rand.IntN(len(files))
+			selected := files[ri]
+			// Apply to ALL monitors (-1) by default for now
+			manager.ApplyWallpaper(selected, -1)
 
 			time.Sleep(time.Duration(*autoInterval) * time.Second)
 		}
