@@ -39,15 +39,25 @@ GtkWidget* create_wallpaper_window(int monitor_index) {
     return window;
 }
 
-// apply_css_to_window applies CSS styling with the given image path to the window.
-void apply_css_to_window(GtkWidget* window, const char* css_data) {
-    GtkCssProvider *provider = gtk_css_provider_new();
-    gtk_css_provider_load_from_data(provider, css_data, -1, NULL);
+// Global CSS provider to track and release old wallpaper resources
+static GtkCssProvider *current_provider = NULL;
 
+// apply_css_to_window applies CSS styling with the given image path to the window.
+// Properly cleans up the previous provider to prevent memory leaks from accumulated images.
+void apply_css_to_window(GtkWidget* window, const char* css_data) {
     GtkStyleContext *context = gtk_widget_get_style_context(window);
-    // Remove old providers and add new one to avoid stacking
-    gtk_style_context_add_provider(context, GTK_STYLE_PROVIDER(provider), GTK_STYLE_PROVIDER_PRIORITY_USER);
-    g_object_unref(provider);
+
+    // Remove and unref the old provider to release previous image memory
+    if (current_provider != NULL) {
+        gtk_style_context_remove_provider(context, GTK_STYLE_PROVIDER(current_provider));
+        g_object_unref(current_provider);
+        current_provider = NULL;
+    }
+
+    // Create and apply new provider
+    current_provider = gtk_css_provider_new();
+    gtk_css_provider_load_from_data(current_provider, css_data, -1, NULL);
+    gtk_style_context_add_provider(context, GTK_STYLE_PROVIDER(current_provider), GTK_STYLE_PROVIDER_PRIORITY_USER);
 }
 */
 import "C"
