@@ -44,7 +44,7 @@ func Run() error {
 
 	// Toolbar or Header
 	header, _ := gtk.HeaderBarNew()
-	header.SetShowCloseButton(true)
+	header.SetShowCloseButton(false)
 	header.SetTitle("Waller")
 	win.SetTitlebar(header)
 
