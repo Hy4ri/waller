@@ -168,7 +168,6 @@ func loadWallpapers(dir string) {
 				for _, path := range batch {
 					addWallpaperItem(path)
 				}
-				globalFlowBox.ShowAll()
 				return false // Run once
 			})
 		}
@@ -190,6 +189,7 @@ func addWallpaperItem(path string) {
 
 	pixbuf, _ := gdk.PixbufNewFromFileAtScale(thumbPath, 180, 130, true)
 	img, _ := gtk.ImageNewFromPixbuf(pixbuf)
+	img.Show() // Show widget explicitly instead of using deprecated ShowAll
 
 	// Wrap image in a button to make it clickable
 	imgBtn, _ := gtk.ButtonNew()
@@ -198,6 +198,7 @@ func addWallpaperItem(path string) {
 	imgBtn.Connect("clicked", func() {
 		applyWallpaper(path)
 	})
+	imgBtn.Show() // Show widget explicitly
 
 	vbox.PackStart(imgBtn, true, true, 0)
 
@@ -207,8 +208,10 @@ func addWallpaperItem(path string) {
 		name = name[:12] + "..."
 	}
 	lbl, _ := gtk.LabelNew(name)
+	lbl.Show() // Show widget explicitly
 	vbox.PackStart(lbl, false, false, 0)
 
+	vbox.Show() // Show container explicitly
 	globalFlowBox.Add(vbox)
 }
 
