@@ -13,10 +13,17 @@ import (
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 
-	"waller/internal/backend" // We can reuse the scanner logic
+	"waller/internal/backend"
 	"waller/internal/cache"
 	"waller/internal/config"
 	"waller/internal/manager"
+)
+
+// Global state for async wallpaper loading and monitor selection
+var (
+	globalFlowBox        *gtk.FlowBox
+	globalFiles          []string
+	selectedMonitorIndex int
 )
 
 func Run() error {
@@ -35,20 +42,20 @@ func Run() error {
 		gtk.MainQuit()
 	})
 
-	// Config
-	cfg, _ := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		log.Printf("Warning: failed to load config: %v", err)
+		cfg = &config.Config{}
+	}
 
-	// Main Layout
 	vbox, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 10)
 	win.Add(vbox)
 
-	// Toolbar or Header
 	header, _ := gtk.HeaderBarNew()
 	header.SetShowCloseButton(false)
 	header.SetTitle("Waller")
 	win.SetTitlebar(header)
 
-	// Directory Button
 	dirBtn, _ := gtk.ButtonNewWithLabel("Open Directory")
 	dirBtn.Connect("clicked", func() {
 		dlg, _ := gtk.FileChooserNativeDialogNew("Select Wallpaper Dir", win, gtk.FILE_CHOOSER_ACTION_SELECT_FOLDER, "Select", "Cancel")
@@ -65,7 +72,6 @@ func Run() error {
 	// Monitor Selection
 	monitorCombo, _ := gtk.ComboBoxTextNew()
 
-	// Dynamic Monitor Detection
 	display, _ := gdk.DisplayGetDefault()
 	nMonitors := display.GetNMonitors()
 
@@ -83,8 +89,7 @@ func Run() error {
 
 	header.PackStart(monitorCombo) // Add next to directory button
 
-	// Global access for apply
-	selectedMonitorIndex = -1 // -1 means All
+	selectedMonitorIndex = -1
 	monitorCombo.Connect("changed", func() {
 		active := monitorCombo.GetActive()
 		if active == 0 {
@@ -94,7 +99,6 @@ func Run() error {
 		}
 	})
 
-	// Random Button
 	randBtn, _ := gtk.ButtonNewWithLabel("Random")
 	randBtn.Connect("clicked", func() {
 		if len(globalFiles) > 0 {
@@ -104,20 +108,16 @@ func Run() error {
 	})
 	header.PackEnd(randBtn)
 
-	// Scroll Window for Grid
 	scroll, _ := gtk.ScrolledWindowNew(nil, nil)
 	scroll.SetPolicy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
 	vbox.PackStart(scroll, true, true, 0)
 
-	// FlowBox for Grid
 	flowBox, _ := gtk.FlowBoxNew()
 	flowBox.SetVAlign(gtk.ALIGN_START)
 	flowBox.SetMaxChildrenPerLine(30) // Dynamic really
 	flowBox.SetSelectionMode(gtk.SELECTION_NONE)
 	scroll.Add(flowBox)
 
-	// We need global access to flowbox for loading
-	// Store reference for async background loading
 	globalFlowBox = flowBox
 
 	win.ShowAll()
@@ -129,12 +129,6 @@ func Run() error {
 	gtk.Main()
 	return nil
 }
-
-var (
-	globalFlowBox        *gtk.FlowBox
-	globalFiles          []string
-	selectedMonitorIndex int
-)
 
 func loadWallpapers(dir string) {
 	// Clear existing
@@ -149,7 +143,6 @@ func loadWallpapers(dir string) {
 			log.Println("Error:", err)
 			return
 		}
-		// Store globally for random
 		globalFiles = files
 
 		// Batch load to UI
@@ -178,8 +171,6 @@ func addWallpaperItem(path string) {
 	// Container
 	vbox, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 5)
 
-	// Image
-	// Use cache!
 	thumbPath, err := cache.GetThumbnail(path, true)
 	if err != nil {
 		thumbPath = path // Fallback to full image
@@ -191,7 +182,6 @@ func addWallpaperItem(path string) {
 	img, _ := gtk.ImageNewFromPixbuf(pixbuf)
 	img.Show() // Show widget explicitly instead of using deprecated ShowAll
 
-	// Wrap image in a button to make it clickable
 	imgBtn, _ := gtk.ButtonNew()
 	imgBtn.SetRelief(gtk.RELIEF_NONE)
 	imgBtn.Add(img)

@@ -9,15 +9,11 @@ import (
 	"os"
 	"os/exec"
 	"time"
+	"waller/internal/ipc"
 
 	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/gtk"
 )
-
-// getSocketPath returns the Unix socket path for a given monitor index.
-func getSocketPath(monitorIndex int) string {
-	return fmt.Sprintf("/tmp/waller-%d.sock", monitorIndex)
-}
 
 // Init must be called to ensure GTK/GDK is initialized for monitor detection
 func Init() {
@@ -46,7 +42,7 @@ func ApplyWallpaper(path string, monitorIndex int) {
 // applyToMonitor handles wallpaper application for a single monitor.
 // Uses IPC if daemon is running, spawns new daemon otherwise.
 func applyToMonitor(path string, monitorIdx int) {
-	socketPath := getSocketPath(monitorIdx)
+	socketPath := ipc.GetSocketPath(monitorIdx)
 
 	// Check if daemon socket exists (daemon is running)
 	if _, err := os.Stat(socketPath); err == nil {
@@ -100,7 +96,7 @@ func spawnDaemon(path string, monitorIdx int) {
 	cmd.Process.Release()
 
 	// Wait briefly for daemon to create its socket
-	socketPath := getSocketPath(monitorIdx)
+	socketPath := ipc.GetSocketPath(monitorIdx)
 	for i := 0; i < 10; i++ {
 		time.Sleep(50 * time.Millisecond)
 		if _, err := os.Stat(socketPath); err == nil {

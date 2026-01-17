@@ -71,14 +71,10 @@ import (
 	"strings"
 	"syscall"
 	"unsafe"
+	"waller/internal/ipc"
 
 	"github.com/gotk3/gotk3/glib"
 )
-
-// getSocketPath returns the Unix socket path for a given monitor index.
-func getSocketPath(monitorIndex int) string {
-	return fmt.Sprintf("/tmp/waller-%d.sock", monitorIndex)
-}
 
 // updateWallpaperCSS generates and applies new CSS for the given image path.
 func updateWallpaperCSS(win *C.GtkWidget, imagePath string) {
@@ -110,7 +106,7 @@ func RunDaemon(imagePath string, monitorIndex int) {
 	C.gtk_widget_show_all(win)
 
 	// Setup IPC socket
-	socketPath := getSocketPath(monitorIndex)
+	socketPath := ipc.GetSocketPath(monitorIndex)
 	os.Remove(socketPath) // Remove stale socket if exists
 
 	listener, err := net.Listen("unix", socketPath)
