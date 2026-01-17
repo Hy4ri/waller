@@ -55,9 +55,9 @@ func GetThumbnail(originalPath string, fastCheck bool) (string, error) {
 		return "", err
 	}
 
-	// Resize to width 300 (preserving aspect ratio)
-	// uint(300) width, 0 height means preserve aspect ratio
-	m := resize.Resize(300, 0, img, resize.Lanczos3)
+	// Resize to width 200 (preserving aspect ratio)
+	// NearestNeighbor is faster and uses less memory than Lanczos3
+	m := resize.Resize(200, 0, img, resize.NearestNeighbor)
 
 	out, err := os.Create(thumbPath)
 	if err != nil {
@@ -65,6 +65,6 @@ func GetThumbnail(originalPath string, fastCheck bool) (string, error) {
 	}
 	defer out.Close()
 
-	// Save as JPEG
-	return thumbPath, jpeg.Encode(out, m, nil)
+	// Save as JPEG with quality 75 (reduces file size, imperceptible at thumbnail size)
+	return thumbPath, jpeg.Encode(out, m, &jpeg.Options{Quality: 75})
 }

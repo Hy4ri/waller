@@ -178,9 +178,13 @@ func addWallpaperItem(path string) {
 		go cache.GetThumbnail(path, false)
 	}
 
-	pixbuf, _ := gdk.PixbufNewFromFileAtScale(thumbPath, 180, 130, true)
+	pixbuf, _ := gdk.PixbufNewFromFileAtScale(thumbPath, 150, 100, true)
 	img, _ := gtk.ImageNewFromPixbuf(pixbuf)
-	img.Show() // Show widget explicitly instead of using deprecated ShowAll
+	// Free the pixbuf after creating the image to release memory
+	if pixbuf != nil {
+		pixbuf.Unref()
+	}
+	img.Show()
 
 	imgBtn, _ := gtk.ButtonNew()
 	imgBtn.SetRelief(gtk.RELIEF_NONE)

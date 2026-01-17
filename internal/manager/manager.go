@@ -1,5 +1,5 @@
 // Package manager handles wallpaper application logic including daemon process management.
-// It uses IPC via Unix sockets to communicate with running daemons, only spawning new ones when needed.
+// It uses IPC via a single Unix socket to communicate with the daemon.
 package manager
 
 import (
@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"time"
+
 	"waller/internal/ipc"
 
 	"github.com/gotk3/gotk3/gdk"
@@ -18,73 +19,59 @@ import (
 // Init must be called to ensure GTK/GDK is initialized for monitor detection
 func Init() {
 	if err := gtk.InitCheck(nil); err != nil {
-		// Fallback for non-GUI context if needed, but we need Display for monitors
 		log.Println("Warning: GTK Init failed, monitor detection may fail")
 	}
 }
 
 // ApplyWallpaper sets the wallpaper on the specified monitor index (-1 for All).
-// It uses IPC to communicate with running daemons, only spawning new ones if needed.
 func ApplyWallpaper(path string, monitorIndex int) {
-	if monitorIndex == -1 {
-		// Apply to ALL monitors
-		display, _ := gdk.DisplayGetDefault()
-		nMonitors := display.GetNMonitors()
+	// Ensure daemon is running
+	ensureDaemonRunning(path)
 
-		for i := 0; i < nMonitors; i++ {
-			applyToMonitor(path, i)
-		}
-	} else {
-		applyToMonitor(path, monitorIndex)
-	}
+	// Send update via IPC
+	sendIPCUpdate(monitorIndex, path)
 }
 
-// applyToMonitor handles wallpaper application for a single monitor.
-// Uses IPC if daemon is running, spawns new daemon otherwise.
-func applyToMonitor(path string, monitorIdx int) {
-	socketPath := ipc.GetSocketPath(monitorIdx)
-
-	// Check if daemon socket exists (daemon is running)
-	if _, err := os.Stat(socketPath); err == nil {
-		// Daemon is running, send update via IPC
-		if sendIPCUpdate(socketPath, path) {
-			return // Success
+// ensureDaemonRunning checks if daemon is running, spawns if not.
+func ensureDaemonRunning(initialPath string) {
+	if _, err := os.Stat(ipc.SocketPath); err == nil {
+		// Socket exists, try to connect
+		conn, err := net.DialTimeout("unix", ipc.SocketPath, 500*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			return // Daemon is running
 		}
-		// IPC failed, socket might be stale - clean up and spawn new daemon
-		os.Remove(socketPath)
+		// Socket exists but can't connect - stale socket
+		os.Remove(ipc.SocketPath)
 	}
 
-	// No running daemon, spawn a new one
-	spawnDaemon(path, monitorIdx)
+	// Spawn daemon
+	spawnDaemon(initialPath)
 }
 
 // sendIPCUpdate sends a wallpaper path to the daemon via Unix socket.
-// Returns true on success, false on failure.
-func sendIPCUpdate(socketPath, imagePath string) bool {
-	conn, err := net.DialTimeout("unix", socketPath, 2*time.Second)
+func sendIPCUpdate(monitorIndex int, imagePath string) {
+	conn, err := net.DialTimeout("unix", ipc.SocketPath, 2*time.Second)
 	if err != nil {
 		log.Printf("IPC dial failed: %v", err)
-		return false
+		return
 	}
 	defer conn.Close()
 
-	// Set write deadline to avoid hanging
 	conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
 
-	// Send path with newline terminator (daemon expects this)
-	_, err = fmt.Fprintf(conn, "%s\n", imagePath)
+	// Send message in format "monitor:path"
+	msg := ipc.FormatMessage(monitorIndex, imagePath)
+	_, err = fmt.Fprintf(conn, "%s\n", msg)
 	if err != nil {
 		log.Printf("IPC write failed: %v", err)
-		return false
 	}
-
-	return true
 }
 
-// spawnDaemon starts a new daemon process for the specified monitor.
-func spawnDaemon(path string, monitorIdx int) {
+// spawnDaemon starts a new daemon process.
+func spawnDaemon(path string) {
 	self, _ := os.Executable()
-	cmd := exec.Command(self, "--daemon", path, "--monitor-index", fmt.Sprintf("%d", monitorIdx))
+	cmd := exec.Command(self, "--daemon", path)
 
 	err := cmd.Start()
 	if err != nil {
@@ -92,15 +79,22 @@ func spawnDaemon(path string, monitorIdx int) {
 		return
 	}
 
-	// Release the process so it continues independently
 	cmd.Process.Release()
 
-	// Wait briefly for daemon to create its socket
-	socketPath := ipc.GetSocketPath(monitorIdx)
-	for i := 0; i < 10; i++ {
+	// Wait for daemon to create socket
+	for i := 0; i < 20; i++ {
 		time.Sleep(50 * time.Millisecond)
-		if _, err := os.Stat(socketPath); err == nil {
-			return // Socket created, daemon is ready
+		if _, err := os.Stat(ipc.SocketPath); err == nil {
+			return
 		}
 	}
+}
+
+// GetMonitorCount returns the number of connected monitors.
+func GetMonitorCount() int {
+	display, err := gdk.DisplayGetDefault()
+	if err != nil {
+		return 1
+	}
+	return display.GetNMonitors()
 }
