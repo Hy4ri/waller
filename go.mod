@@ -1,6 +1,8 @@
 module waller
 
-go 1.24
+go 1.24.0
+
+toolchain go1.24.11
 
 require (
 	github.com/gotk3/gotk3 v0.6.5-0.20251124190141-e7a9e823ca35
