@@ -93,12 +93,12 @@ void schedule_wallpaper_update(GtkWidget *window, const char *css_data) {
 */
 import "C"
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"os/signal"
-	"runtime"
 	"runtime/debug"
 	"strings"
 	"syscall"
@@ -111,8 +111,8 @@ import (
 var windows []*C.GtkWidget
 
 // updateWallpaperCSS applies CSS to a window (for initial setup).
-func updateWallpaperCSS(win *C.GtkWidget, imagePath string) {
-	css := fmt.Sprintf(`
+func getWallpaperCSS(imagePath string) string {
+	return fmt.Sprintf(`
         .wallpaper {
             background-image: url("%s");
             background-size: cover;
@@ -120,24 +120,16 @@ func updateWallpaperCSS(win *C.GtkWidget, imagePath string) {
             background-position: center;
         }
     `, imagePath)
+}
 
-	cCss := C.CString(css)
+func updateWallpaperCSS(win *C.GtkWidget, imagePath string) {
+	cCss := C.CString(getWallpaperCSS(imagePath))
 	defer C.free(unsafe.Pointer(cCss))
 	C.apply_css_to_window(win, cCss)
 }
 
-// scheduleWallpaperUpdate schedules a CSS update on the GTK main thread.
 func scheduleWallpaperUpdate(win *C.GtkWidget, imagePath string) {
-	css := fmt.Sprintf(`
-        .wallpaper {
-            background-image: url("%s");
-            background-size: cover;
-            background-repeat: no-repeat;
-            background-position: center;
-        }
-    `, imagePath)
-
-	cCss := C.CString(css)
+	cCss := C.CString(getWallpaperCSS(imagePath))
 	C.schedule_wallpaper_update(win, cCss)
 	C.free(unsafe.Pointer(cCss))
 }
@@ -145,17 +137,12 @@ func scheduleWallpaperUpdate(win *C.GtkWidget, imagePath string) {
 // applyToMonitor applies wallpaper to specified monitor or all monitors.
 func applyToMonitor(monitorIdx int, imagePath string) {
 	if monitorIdx == -1 {
-		// Apply to all monitors
 		for _, win := range windows {
 			scheduleWallpaperUpdate(win, imagePath)
 		}
 	} else if monitorIdx >= 0 && monitorIdx < len(windows) {
 		scheduleWallpaperUpdate(windows[monitorIdx], imagePath)
 	}
-
-	// Force GC and release memory back to OS
-	runtime.GC()
-	debug.FreeOSMemory()
 }
 
 // RunDaemon starts the GTK main loop and displays wallpapers on all monitors.
@@ -198,31 +185,27 @@ func RunDaemon(imagePath string, _ int) {
 			defer listener.Close()
 			defer os.Remove(ipc.SocketPath)
 
-			buf := make([]byte, 1024)
-
 			for {
 				conn, err := listener.Accept()
 				if err != nil {
 					return
 				}
 
-				n, err := conn.Read(buf)
+				scanner := bufio.NewScanner(conn)
+				scanner.Buffer(make([]byte, 4096), 4096)
+
+				for scanner.Scan() {
+					msg := strings.TrimSpace(scanner.Text())
+					if msg == "" {
+						continue
+					}
+
+					monitorIdx, path := ipc.ParseMessage(msg)
+					if path != "" {
+						applyToMonitor(monitorIdx, path)
+					}
+				}
 				conn.Close()
-
-				if err != nil || n == 0 {
-					continue
-				}
-
-				msg := strings.TrimSpace(string(buf[:n]))
-				if msg == "" {
-					continue
-				}
-
-				// Parse message: "monitor:path"
-				monitorIdx, path := ipc.ParseMessage(msg)
-				if path != "" {
-					applyToMonitor(monitorIdx, path)
-				}
 			}
 		}()
 	}

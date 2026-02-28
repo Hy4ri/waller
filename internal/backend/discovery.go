@@ -19,13 +19,13 @@ var validExtensions = map[string]bool{
 // GetWallpapers scans the given directory and returns a list of absolute paths
 // for all supported image files found.
 func GetWallpapers(dir string) ([]string, error) {
-	var wallpapers []string
-
 	// ReadDir reads the named directory and returns all its directory entries sorted by filename.
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
+
+	wallpapers := make([]string, 0, len(entries))
 
 	for _, entry := range entries {
 		if entry.IsDir() {

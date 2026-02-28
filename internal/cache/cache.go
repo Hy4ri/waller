@@ -11,27 +11,43 @@ import (
 	_ "image/png"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/nfnt/resize"
+	_ "golang.org/x/image/webp"
 )
+
+// thumbDir is resolved once at first use to avoid repeated syscalls.
+var (
+	thumbDir     string
+	thumbDirOnce sync.Once
+	thumbDirErr  error
+)
+
+// initThumbDir resolves and creates the thumbnail cache directory.
+func initThumbDir() {
+	thumbDirOnce.Do(func() {
+		cacheDir, err := os.UserCacheDir()
+		if err != nil {
+			thumbDirErr = err
+			return
+		}
+		thumbDir = filepath.Join(cacheDir, "waller", "thumbnails")
+		thumbDirErr = os.MkdirAll(thumbDir, 0755)
+	})
+}
 
 // GetThumbnail returns the path to a cached thumbnail for the given image path.
 // If the thumbnail does not exist, it generates one.
 // fastCheck: if true, only checks existence, does not generate (returns error if missing).
 func GetThumbnail(originalPath string, fastCheck bool) (string, error) {
+	initThumbDir()
+	if thumbDirErr != nil {
+		return "", thumbDirErr
+	}
+
 	hash := md5.Sum([]byte(originalPath))
 	hashStr := hex.EncodeToString(hash[:])
-
-	cacheDir, err := os.UserCacheDir()
-	if err != nil {
-		return "", err
-	}
-
-	thumbDir := filepath.Join(cacheDir, "waller", "thumbnails")
-	if err := os.MkdirAll(thumbDir, 0755); err != nil {
-		return "", err
-	}
-
 	thumbPath := filepath.Join(thumbDir, hashStr+".jpg")
 
 	// Check if exists

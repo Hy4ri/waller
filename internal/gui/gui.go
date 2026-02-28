@@ -8,6 +8,8 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
 
 	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/glib"
@@ -23,6 +25,7 @@ import (
 var (
 	globalFlowBox        *gtk.FlowBox
 	globalFiles          []string
+	globalFilesMu        sync.Mutex
 	selectedMonitorIndex int
 )
 
@@ -99,9 +102,13 @@ func Run() error {
 
 	randBtn, _ := gtk.ButtonNewWithLabel("Random")
 	randBtn.Connect("clicked", func() {
-		if len(globalFiles) > 0 {
-			ri := rand.IntN(len(globalFiles))
-			applyWallpaper(globalFiles[ri])
+		globalFilesMu.Lock()
+		files := globalFiles
+		globalFilesMu.Unlock()
+
+		if len(files) > 0 {
+			ri := rand.IntN(len(files))
+			applyWallpaper(files[ri])
 		}
 	})
 	header.PackEnd(randBtn)
@@ -141,9 +148,36 @@ func loadWallpapers(dir string) {
 			log.Println("Error:", err)
 			return
 		}
-		globalFiles = files
 
-		// Batch load to UI
+		globalFilesMu.Lock()
+		globalFiles = files
+		globalFilesMu.Unlock()
+
+		// Pre-generate missing thumbnails with a bounded worker pool
+		numWorkers := runtime.NumCPU()
+		jobs := make(chan string, numWorkers)
+
+		var wg sync.WaitGroup
+		for range numWorkers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for path := range jobs {
+					cache.GetThumbnail(path, false)
+				}
+			}()
+		}
+
+		// Enqueue files that need thumbnails
+		for _, path := range files {
+			if _, err := cache.GetThumbnail(path, true); err != nil {
+				jobs <- path
+			}
+		}
+		close(jobs)
+		wg.Wait()
+
+		// Batch load to UI (thumbnails are all cached now)
 		batchSize := 20
 		total := len(files)
 
@@ -172,8 +206,6 @@ func addWallpaperItem(path string) {
 	thumbPath, err := cache.GetThumbnail(path, true)
 	if err != nil {
 		thumbPath = path // Fallback to full image
-		// Trigger gen
-		go cache.GetThumbnail(path, false)
 	}
 
 	pixbuf, _ := gdk.PixbufNewFromFileAtScale(thumbPath, 150, 100, true)

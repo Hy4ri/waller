@@ -11,24 +11,11 @@ import (
 	"time"
 
 	"waller/internal/ipc"
-
-	"github.com/gotk3/gotk3/gdk"
-	"github.com/gotk3/gotk3/gtk"
 )
-
-// Init must be called to ensure GTK/GDK is initialized for monitor detection
-func Init() {
-	if err := gtk.InitCheck(nil); err != nil {
-		log.Println("Warning: GTK Init failed, monitor detection may fail")
-	}
-}
 
 // ApplyWallpaper sets the wallpaper on the specified monitor index (-1 for All).
 func ApplyWallpaper(path string, monitorIndex int) {
-	// Ensure daemon is running
 	ensureDaemonRunning(path)
-
-	// Send update via IPC
 	sendIPCUpdate(monitorIndex, path)
 }
 
@@ -88,13 +75,4 @@ func spawnDaemon(path string) {
 			return
 		}
 	}
-}
-
-// GetMonitorCount returns the number of connected monitors.
-func GetMonitorCount() int {
-	display, err := gdk.DisplayGetDefault()
-	if err != nil {
-		return 1
-	}
-	return display.GetNMonitors()
 }

@@ -14,6 +14,8 @@ import (
 	"waller/internal/gui"
 	"waller/internal/layer"
 	"waller/internal/manager"
+
+	"github.com/gotk3/gotk3/gtk"
 )
 
 func main() {
@@ -33,70 +35,53 @@ func main() {
 
 	// Random Wallpaper Mode (one-time)
 	if *randomFlag {
-		manager.Init() // Init GTK for monitors
-
-		cfg, err := config.Load()
-		if err != nil {
-			log.Fatal("Could not load config:", err)
-		}
-		if cfg.WallpaperDir == "" {
-			log.Fatal("No wallpaper directory configured. Please run GUI first.")
-		}
-
-		files, err := backend.GetWallpapers(cfg.WallpaperDir)
-		if err != nil {
-			log.Fatal("Error scanning wallpapers:", err)
-		}
-		if len(files) == 0 {
-			log.Fatal("No wallpapers found in directory")
-		}
-
+		files, _ := loadConfigAndGetWallpapers()
 		ri := rand.IntN(len(files))
 		selected := files[ri]
 
-		// Apply to specified monitor, or all monitors if not specified (-1)
 		manager.ApplyWallpaper(selected, *monitorIdxFlag)
-
 		fmt.Printf("Applied random wallpaper: %s\n", selected)
 		return
 	}
 
-	// Auto-Rotation Mode
 	if *autoInterval > 0 {
-		manager.Init() // Init GTK for monitors
-
-		cfg, err := config.Load()
-		if err != nil {
-			log.Fatal("Could not load config:", err)
-		}
-		if cfg.WallpaperDir == "" {
-			log.Fatal("No wallpaper directory configured. Please run GUI first.")
-		}
-
-		// Cache the wallpaper list once at startup to avoid rescanning on every interval
-		files, err := backend.GetWallpapers(cfg.WallpaperDir)
-		if err != nil {
-			log.Fatal("Error scanning wallpapers:", err)
-		}
-		if len(files) == 0 {
-			log.Fatal("No wallpapers found in directory")
-		}
-
-		fmt.Printf("Starting auto-rotation: dir=%s interval=%ds wallpapers=%d\n", cfg.WallpaperDir, *autoInterval, len(files))
+		files, wallpaperDir := loadConfigAndGetWallpapers()
+		fmt.Printf("Starting auto-rotation: dir=%s interval=%ds wallpapers=%d\n", wallpaperDir, *autoInterval, len(files))
 
 		for {
 			ri := rand.IntN(len(files))
 			selected := files[ri]
-			// Apply to ALL monitors (-1) by default for now
 			manager.ApplyWallpaper(selected, -1)
-
 			time.Sleep(time.Duration(*autoInterval) * time.Second)
 		}
 	}
 
-	// GUI Mode (Manager, GTK)
 	if err := gui.Run(); err != nil {
 		fmt.Printf("Error running GUI: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func loadConfigAndGetWallpapers() ([]string, string) {
+	if err := gtk.InitCheck(nil); err != nil {
+		log.Fatal("GTK init failed:", err)
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatal("Could not load config:", err)
+	}
+	if cfg.WallpaperDir == "" {
+		log.Fatal("No wallpaper directory configured. Please run GUI first.")
+	}
+
+	files, err := backend.GetWallpapers(cfg.WallpaperDir)
+	if err != nil {
+		log.Fatal("Error scanning wallpapers:", err)
+	}
+	if len(files) == 0 {
+		log.Fatal("No wallpapers found in directory")
+	}
+
+	return files, cfg.WallpaperDir
 }
