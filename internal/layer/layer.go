@@ -95,11 +95,10 @@ import "C"
 import (
 	"bufio"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"os/signal"
-	"runtime/debug"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -148,8 +147,6 @@ func applyToMonitor(monitorIdx int, imagePath string) {
 // RunDaemon starts the GTK main loop and displays wallpapers on all monitors.
 // Single daemon handles all monitors via one IPC socket.
 func RunDaemon(imagePath string, _ int) {
-	debug.SetGCPercent(50)
-
 	C.gtk_init(nil, nil)
 	C.init_window_providers()
 
@@ -157,20 +154,20 @@ func RunDaemon(imagePath string, _ int) {
 	nMonitors := int(C.get_monitor_count())
 	windows = make([]*C.GtkWidget, nMonitors)
 
-	for i := 0; i < nMonitors; i++ {
+	for i := range nMonitors {
 		win := C.create_wallpaper_window(C.int(i))
 		windows[i] = win
 		updateWallpaperCSS(win, imagePath)
 		C.gtk_widget_show_all(win)
 	}
 
-	log.Printf("Daemon started: %d monitors, socket: %s", nMonitors, ipc.SocketPath)
+	slog.Info("Daemon started", "monitors", nMonitors, "socket", ipc.SocketPath)
 
 	// Setup single IPC socket
 	os.Remove(ipc.SocketPath)
 	listener, err := net.Listen("unix", ipc.SocketPath)
 	if err != nil {
-		log.Printf("Warning: Failed to create IPC socket: %v", err)
+		slog.Warn("Failed to create IPC socket", "error", err)
 	} else {
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)

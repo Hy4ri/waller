@@ -69,7 +69,7 @@ func spawnDaemon(path string) {
 	cmd.Process.Release()
 
 	// Wait for daemon to create socket
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		time.Sleep(50 * time.Millisecond)
 		if _, err := os.Stat(ipc.SocketPath); err == nil {
 			return

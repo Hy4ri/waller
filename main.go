@@ -3,10 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"os"
-
-	"log"
+	"log/slog"
 	"math/rand/v2"
+	"os"
 	"time"
 
 	"waller/internal/backend"
@@ -64,23 +63,28 @@ func main() {
 
 func loadConfigAndGetWallpapers() ([]string, string) {
 	if err := gtk.InitCheck(nil); err != nil {
-		log.Fatal("GTK init failed:", err)
+		slog.Error("GTK init failed", "error", err)
+		os.Exit(1)
 	}
 
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatal("Could not load config:", err)
+		slog.Error("Could not load config", "error", err)
+		os.Exit(1)
 	}
 	if cfg.WallpaperDir == "" {
-		log.Fatal("No wallpaper directory configured. Please run GUI first.")
+		slog.Error("No wallpaper directory configured, please run GUI first")
+		os.Exit(1)
 	}
 
 	files, err := backend.GetWallpapers(cfg.WallpaperDir)
 	if err != nil {
-		log.Fatal("Error scanning wallpapers:", err)
+		slog.Error("Error scanning wallpapers", "error", err)
+		os.Exit(1)
 	}
 	if len(files) == 0 {
-		log.Fatal("No wallpapers found in directory")
+		slog.Error("No wallpapers found in directory")
+		os.Exit(1)
 	}
 
 	return files, cfg.WallpaperDir

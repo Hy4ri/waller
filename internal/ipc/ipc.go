@@ -19,15 +19,15 @@ func FormatMessage(monitorIndex int, imagePath string) string {
 // ParseMessage parses an IPC message ("monitor:path") into its components.
 // Returns monitor index and image path.
 func ParseMessage(msg string) (int, string) {
-	idx := strings.IndexByte(msg, ':')
-	if idx < 0 {
+	before, after, ok := strings.Cut(msg, ":")
+	if !ok {
 		return -1, ""
 	}
 
-	monitor, err := strconv.Atoi(msg[:idx])
+	monitor, err := strconv.Atoi(before)
 	if err != nil {
 		return -1, ""
 	}
 
-	return monitor, msg[idx+1:]
+	return monitor, after
 }

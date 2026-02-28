@@ -4,7 +4,7 @@ package gui
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
@@ -47,8 +47,8 @@ func Run() error {
 
 	cfg, err := config.Load()
 	if err != nil {
-		log.Printf("Warning: failed to load config: %v", err)
-		cfg = &config.Config{}
+		slog.Warn("Failed to load config", "error", err)
+		cfg = new(config.Config)
 	}
 
 	vbox, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 10)
@@ -119,7 +119,7 @@ func Run() error {
 
 	flowBox, _ := gtk.FlowBoxNew()
 	flowBox.SetVAlign(gtk.ALIGN_START)
-	flowBox.SetMaxChildrenPerLine(30) // Dynamic really
+	flowBox.SetMaxChildrenPerLine(30)
 	flowBox.SetSelectionMode(gtk.SELECTION_NONE)
 	scroll.Add(flowBox)
 
@@ -145,7 +145,7 @@ func loadWallpapers(dir string) {
 	go func() {
 		files, err := backend.GetWallpapers(dir)
 		if err != nil {
-			log.Println("Error:", err)
+			slog.Error("Failed to load wallpapers", "error", err)
 			return
 		}
 
@@ -222,7 +222,7 @@ func addWallpaperItem(path string) {
 	imgBtn.Connect("clicked", func() {
 		applyWallpaper(path)
 	})
-	imgBtn.Show() // Show widget explicitly
+	imgBtn.Show()
 
 	vbox.PackStart(imgBtn, true, true, 0)
 
@@ -232,10 +232,10 @@ func addWallpaperItem(path string) {
 		name = name[:12] + "..."
 	}
 	lbl, _ := gtk.LabelNew(name)
-	lbl.Show() // Show widget explicitly
+	lbl.Show()
 	vbox.PackStart(lbl, false, false, 0)
 
-	vbox.Show() // Show container explicitly
+	vbox.Show()
 	globalFlowBox.Add(vbox)
 }
 
@@ -248,7 +248,7 @@ func refreshMonitors(combo *gtk.ComboBoxText) {
 	display, _ := gdk.DisplayGetDefault()
 	nMonitors := display.GetNMonitors()
 
-	for i := 0; i < nMonitors; i++ {
+	for i := range nMonitors {
 		mon, _ := display.GetMonitor(i)
 		name := mon.GetModel()
 		if name == "" {

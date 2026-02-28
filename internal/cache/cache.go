@@ -5,7 +5,7 @@ package cache
 import (
 	"crypto/md5"
 	"encoding/hex"
-	"fmt"
+	"errors"
 	"image"
 	"image/jpeg"
 	_ "image/png"
@@ -56,7 +56,7 @@ func GetThumbnail(originalPath string, fastCheck bool) (string, error) {
 	}
 
 	if fastCheck {
-		return "", fmt.Errorf("thumbnail not found")
+		return "", errors.New("thumbnail not found")
 	}
 
 	// Generate
