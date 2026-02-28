@@ -15,7 +15,7 @@
       system: let
         pkgs = nixpkgs.legacyPackages.${system};
       in {
-        packages.default = pkgs.buildGoModule {
+        packages.default = pkgs.buildGoModule.override {go = pkgs.go_1_24;} {
           pname = "waller";
           version = "0.3.0";
           src = ./.;
@@ -62,7 +62,7 @@
 
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
-            go
+            go_1_24
             gopls
             gotools
             go-tools
