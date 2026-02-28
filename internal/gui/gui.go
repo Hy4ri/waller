@@ -71,23 +71,9 @@ func Run() error {
 	header.PackStart(dirBtn)
 	// Monitor Selection
 	monitorCombo, _ := gtk.ComboBoxTextNew()
+	refreshMonitors(monitorCombo)
 
-	display, _ := gdk.DisplayGetDefault()
-	nMonitors := display.GetNMonitors()
-
-	monitorCombo.AppendText("All") // Maps to -1 for "All Monitors" logic
-	for i := 0; i < nMonitors; i++ {
-		// Try to get model/name if possible, else "Monitor N"
-		mon, _ := display.GetMonitor(i)
-		name := mon.GetModel()
-		if name == "" {
-			name = fmt.Sprintf("Monitor %d", i)
-		}
-		monitorCombo.AppendText(name) // Index i+1
-	}
-	monitorCombo.SetActive(0)
-
-	header.PackStart(monitorCombo) // Add next to directory button
+	header.PackStart(monitorCombo)
 
 	selectedMonitorIndex = -1
 	monitorCombo.Connect("changed", func() {
@@ -98,6 +84,18 @@ func Run() error {
 			selectedMonitorIndex = active - 1 // 0-based index for GDK
 		}
 	})
+
+	// Refresh Button — re-detects monitors and reloads wallpapers
+	refreshBtn, _ := gtk.ButtonNewWithLabel("Refresh")
+	refreshBtn.Connect("clicked", func() {
+		refreshMonitors(monitorCombo)
+		selectedMonitorIndex = -1
+
+		if cfg.WallpaperDir != "" {
+			loadWallpapers(cfg.WallpaperDir)
+		}
+	})
+	header.PackStart(refreshBtn)
 
 	randBtn, _ := gtk.ButtonNewWithLabel("Random")
 	randBtn.Connect("clicked", func() {
@@ -207,6 +205,26 @@ func addWallpaperItem(path string) {
 
 	vbox.Show() // Show container explicitly
 	globalFlowBox.Add(vbox)
+}
+
+// refreshMonitors clears and repopulates the monitor combo box
+// from the current GDK display state.
+func refreshMonitors(combo *gtk.ComboBoxText) {
+	combo.RemoveAll()
+	combo.AppendText("All") // Index 0 → monitorIndex -1
+
+	display, _ := gdk.DisplayGetDefault()
+	nMonitors := display.GetNMonitors()
+
+	for i := 0; i < nMonitors; i++ {
+		mon, _ := display.GetMonitor(i)
+		name := mon.GetModel()
+		if name == "" {
+			name = fmt.Sprintf("Monitor %d", i)
+		}
+		combo.AppendText(name)
+	}
+	combo.SetActive(0)
 }
 
 func applyWallpaper(path string) {
